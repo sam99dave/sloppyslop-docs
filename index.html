@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sloppyslop · architecture docs</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-2: #161b22;
+    --bg-3: #1c2129;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-2: #1f6feb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ---------- sidebar ---------- */
+  #sidebar {
+    width: 320px;
+    min-width: 320px;
+    height: 100%;
+    background: var(--bg-2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width .2s ease, min-width .2s ease;
+  }
+  body.sb-collapsed #sidebar {
+    width: 0;
+    min-width: 0;
+    border-right-width: 0;
+  }
+  #brand {
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  #brand h1 { font-size: 15px; font-weight: 600; letter-spacing: .3px; }
+  #brand h1 span { color: var(--accent); }
+  #brand p { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  #search-wrap { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  #search {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    outline: none;
+  }
+  #search:focus { border-color: var(--accent-2); }
+  #list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  #list::-webkit-scrollbar { width: 10px; }
+  #list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-header:hover { color: var(--text); }
+  .group-header .count {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 500;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1px 7px;
+  }
+  .group-header .chev { transition: transform .15s; font-size: 9px; }
+  .group.collapsed .chev { transform: rotate(-90deg); }
+  .group.collapsed .items { display: none; }
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 26px;
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .item:hover { color: var(--text); background: var(--bg-3); }
+  .item.active {
+    color: var(--accent);
+    background: var(--bg-3);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .item svg { flex-shrink: 0; opacity: .7; }
+  .empty {
+    padding: 40px 16px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 12px;
+    display: none;
+  }
+
+  /* ---------- viewer ---------- */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #toolbar {
+    height: 48px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+  }
+  #title {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #title span { color: var(--text-dim); font-weight: 400; }
+  .btn {
+    height: 30px;
+    min-width: 30px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--text);
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent-2); color: var(--accent); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn:disabled:hover { border-color: var(--border); color: var(--text); }
+  #zoom-label { font-size: 12px; color: var(--text-dim); min-width: 44px; text-align: center; }
+  #stage {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 1px 1px, #21262d 1px, transparent 0) 0 0 / 24px 24px,
+      var(--bg);
+    cursor: grab;
+  }
+  #stage.panning { cursor: grabbing; }
+  #stage img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    max-width: none;
+    max-height: none;
+    transform-origin: 0 0;
+    user-select: none;
+    -webkit-user-drag: none;
+    display: none;
+  }
+  #doc {
+    position: absolute;
+    inset: 0;
+    display: none;
+    overflow-y: auto;
+    background: var(--bg);
+  }
+  #doc::-webkit-scrollbar { width: 10px; }
+  #doc::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+  #doc .inner {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 36px 44px 120px;
+    font-size: 14px;
+    line-height: 1.65;
+    color: #c9d1d9;
+  }
+  #doc h1 {
+    font-size: 26px;
+    color: var(--text);
+    margin: 8px 0 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  #doc h2 { font-size: 20px; color: var(--text); margin: 30px 0 10px; }
+  #doc h3 { font-size: 16px; color: var(--text); margin: 22px 0 8px; }
+  #doc h4, #doc h5, #doc h6 { font-size: 14px; color: var(--text); margin: 18px 0 6px; }
+  #doc p { margin: 10px 0; }
+  #doc a { color: var(--accent); text-decoration: none; }
+  #doc a:hover { text-decoration: underline; }
+  #doc strong { color: var(--text); }
+  #doc code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    color: #f0883e;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  #doc pre {
+    position: relative;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 14px 0;
+    overflow-x: auto;
+  }
+  #doc pre code { background: none; border: none; padding: 0; color: #adbac7; font-size: 12px; line-height: 1.5; }
+  #doc pre[data-lang]::before {
+    content: attr(data-lang);
+    position: absolute;
+    top: 7px;
+    right: 11px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  #doc .tbl { overflow-x: auto; margin: 14px 0; }
+  #doc table { border-collapse: collapse; width: 100%; }
+  #doc th, #doc td { border: 1px solid var(--border); padding: 6px 12px; font-size: 13px; }
+  #doc th { background: var(--bg-2); color: var(--text); font-weight: 600; }
+  #doc blockquote {
+    border-left: 3px solid var(--accent-2);
+    background: var(--bg-2);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 16px;
+    margin: 14px 0;
+    color: var(--text-dim);
+  }
+  #doc blockquote p { margin: 4px 0; }
+  #doc ul, #doc ol { padding-left: 24px; margin: 10px 0; }
+  #doc li { margin: 4px 0; }
+  #doc hr { border: none; border-top: 1px solid var(--border); margin: 26px 0; }
+  #placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-dim);
+  }
+  #placeholder .big { font-size: 42px; opacity: .4; }
+  #placeholder p { font-size: 13px; }
+  #placeholder p b { color: var(--text); }
+  kbd {
+    font-family: inherit;
+    font-size: 11px;
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <div id="brand">
+    <h1>sloppy<span>slop</span> docs</h1>
+    <p>architecture diagrams &amp; readmes</p>
+  </div>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Filter diagrams…  ( / )" autocomplete="off">
+  </div>
+  <div id="list"></div>
+  <div class="empty" id="empty">No matches</div>
+</nav>
+
+<main id="main">
+  <div id="toolbar">
+    <button class="btn" id="sb-toggle" title="Toggle sidebar (S)">☰</button>
+    <div id="title">Select a diagram</div>
+    <button class="btn" id="prev" title="Previous (←)">&larr;</button>
+    <button class="btn" id="next" title="Next (→)">&rarr;</button>
+    <button class="btn" id="zoom-out" title="Zoom out (-)">−</button>
+    <div id="zoom-label">100%</div>
+    <button class="btn" id="zoom-in" title="Zoom in (+)">+</button>
+    <button class="btn" id="fit" title="Fit to screen (0)">Fit</button>
+    <button class="btn" id="open" title="Open in new tab">Open ↗</button>
+    <button class="btn" id="full" title="Fullscreen (F)">⛶</button>
+  </div>
+  <div id="stage">
+    <div id="placeholder">
+      <div class="big">⬡</div>
+      <p>Pick a diagram or readme, or use <b>←</b> / <b>→</b> to browse</p>
+    </div>
+    <img id="view" alt="architecture diagram">
+    <div id="doc"></div>
+  </div>
+</main>
+
+<script type="text/markdown" data-path="vLLM/README.md">
+# vLLM Architecture Deep Dive (Mermaid Diagrams)
+
+A set of deep-technical architecture diagrams of this tree (vLLM `main`, as of Oct 2026).
+Use them to navigate the code: every diagram names exact files, classes, and methods.
+
+> Note: this tree is newer than most published vLLM docs. The legacy v0 engine is gone
+> (`vllm/engine/llm_engine.py` is a 2-line alias into `vllm/v1/`), the classic
+> `serving_chat.py` monolith is split per-endpoint, and `TokenizerGroup`/`InputRegistry`
+> have been replaced by the `vllm/renderers/` + `vllm/tokenizers/` architecture.
+
+## Reading order
+
+| # | Diagram | Question it answers |
+|---|---------|----------------------|
+| 1 | [System Overview](01-system-overview.md) | What are the layers, from HTTP request to GPU kernel? |
+| 2 | [Process Topology & IPC](02-process-topology.md) | Which processes exist, and how do they talk (ZMQ)? |
+| 3 | [Request Lifecycle](03-request-lifecycle.md) | Trace one streaming chat request end-to-end. |
+| 4 | [Frontend & Serving Layer](04-frontend-serving.md) | How is `vllm serve` assembled — routers, renderers, parsers? |
+| 5 | [Engine Core](05-engine-core.md) | What runs inside the EngineCore process (busy loop, scheduling, exec)? |
+| 6 | [Scheduler & KV Cache](06-scheduler-kv-cache.md) | How are batches built, and how is paged KV memory managed? |
+| 7 | [Execution Stack](07-execution-stack.md) | Executor → Worker → GPUModelRunner → CUDA graphs / torch.compile. |
+| 8 | [Models, Attention & Distributed](08-attention-distributed.md) | Model registry, layers, attention backend selection, TP/PP/DP/EP, KV disagg. |
+| 9 | [Sampling, Spec Decode, Structured Output & LoRA](09-sampling-spec-decode.md) | What happens to logits after the forward pass? |
+| 10 | [Config, Platforms & Plugins](10-config-platform-plugins.md) | How is `VllmConfig` assembled and how does the system extend? |
+
+## How the diagrams connect
+
+```mermaid
+flowchart TD
+    subgraph Legend[" "]
+        direction LR
+        L1[Diagram 1: System Overview]
+        L2[Diagrams 2-3: Processes & Lifecycle]
+        L3[Diagrams 4-5: Frontend & Engine Core]
+        L4[Diagrams 6-9: Engine internals]
+        L5[Diagram 10: Cross-cutting]
+        L1 --> L2 --> L3 --> L4
+        L5 -.-> L3
+        L5 -.-> L4
+    end
+```
+
+- Diagrams 1–3 give the **map** (processes, IPC, one request's journey).
+- Diagrams 4–9 **zoom into** each layer, in the order a request passes through them.
+- Diagram 10 is **cross-cutting** (config assembly, platform detection, plugin entry points)
+  and applies to everything else.
+
+## Repo-to-diagram quick lookup
+
+| Repo path | Covered in |
+|---|---|
+| `vllm/entrypoints/` (CLI, launchers, serving routers) | 1, 2, 4 |
+| `vllm/renderers/`, `vllm/tokenizers/`, `vllm/parser/`, `vllm/tool_parsers/`, `vllm/reasoning/` | 4 |
+| `vllm/v1/engine/` (AsyncLLM, LLMEngine, EngineCore, core_client, processors) | 2, 3, 5 |
+| `vllm/v1/core/sched/` (Scheduler) | 6 |
+| `vllm/v1/core/` (KVCacheManager, coordinator, BlockPool) | 6 |
+| `vllm/v1/executor/`, `vllm/v1/worker/` | 7 |
+| `vllm/compilation/`, `vllm/v1/cudagraph_dispatcher.py` (CUDA graphs, torch.compile) | 7 |
+| `vllm/model_executor/` (models, layers, loaders) | 8 |
+| `vllm/v1/attention/` (attention backends) | 8 |
+| `vllm/distributed/` (parallel_state, comm ops, kv_transfer) | 8 |
+| `vllm/v1/sample/`, `vllm/v1/spec_decode/`, `vllm/v1/structured_output/`, `vllm/lora/` | 9 |
+| `vllm/config/`, `vllm/platforms/`, `vllm/plugins/`, `vllm/v1/metrics/` | 10 |
+| `csrc/`, `vllm/layers/` (kernels) | 7, 8 (referenced) |
+
+## Caveats
+
+- Line numbers drift; file paths and class names are the stable anchors.
+- Both a V1 (`vllm/v1/worker/gpu_model_runner.py`) and a V2
+  (`vllm/v1/worker/gpu/model_runner.py`) model runner exist; V2 is selected by
+  `VLLM_USE_V2_MODEL_RUNNER`. Diagrams call out the differences where they matter.
+</script>
+
+<script type="text/markdown" data-path="Openpilot/README.md">
+# openpilot Architecture Diagrams
+
+Mermaid architecture diagrams for the openpilot codebase. View them with any
+Mermaid renderer (GitHub, VS Code Mermaid extension, mermaid.live, mkdocs with
+mermaid, etc.) — each file is a standalone `.mmd` diagram.
+
+## Diagram index
+
+| # | File | What it shows |
+|---|------|---------------|
+| 1 | [01-system-overview.mmd](01-system-overview.mmd) | **Start here.** The big picture: vehicle, comma device hardware, AGNOS OS, the openpilot software stack, and the comma cloud. |
+| 2 | [02-process-architecture.mmd](02-process-architecture.mmd) | The manager: boot chain, process types (`PythonProcess` / `NativeProcess` / `DaemonProcess`), the full process table and when each process runs (onroad / offroad / driver view / notCar). |
+| 3 | [03-messaging.mmd](03-messaging.mmd) | The nervous system: `cereal` (Cap'n Proto `Event` union + service registry), `msgq` (zero-copy shared-memory pub/sub), `visionipc` (zero-copy camera frames), the `params` store, and the ZMQ `bridge` used for PC development. |
+| 4 | [04-onroad-data-flow.mmd](04-onroad-data-flow.mmd) | **Master data-flow graph.** End-to-end message flow while driving: sensors in, actuators out. Edge labels are cereal message names. |
+| 5 | [05-vision-model-pipeline.mmd](05-vision-model-pipeline.mmd) | Camera frames: `camerad` → `visionipc` → `modeld` (tinygrad NNs) → `modelV2` / `cameraOdometry`, plus the driver-monitoring path and the logging path. |
+| 6 | [06-controls-stack.mmd](06-controls-stack.mmd) | Planning & control internals: `selfdrived` (state machine / events / alerts), `controlsd` (lateral + longitudinal loops), `card`, `plannerd` (MPC), `radard` (radar/vision fusion). |
+| 7 | [07-car-abstraction.mmd](07-car-abstraction.mmd) | How openpilot supports 300+ cars: `card` daemon, car fingerprinting (VIN → FW versions → CAN fingerprint), and the per-brand port structure in the `opendbc` submodule. |
+| 8 | [08-safety-path.mmd](08-safety-path.mmd) | Safety architecture: the 5-layer defense-in-depth actuation path, `pandad` ↔ panda MCU, and the MISRA-style C safety code in `opendbc/safety` compiled into the panda firmware. |
+| 9 | [09-locationd-pipeline.mmd](09-locationd-pipeline.mmd) | State estimation: the `locationd` pose EKF (rednose-generated) and its siblings (`calibrationd`, `paramsd`, `torqued`, `lagd`) plus the GNSS pipelines. |
+| 10 | [10-offroad-cloud.mmd](10-offroad-cloud.mmd) | Offroad world: `hardwared` device health, the UI, `athenad` cloud link, `uploader`, `updated` OTA, and comma body / teleop (`webrtcd`, `joystickd`). |
+| 11 | [11-ui.mmd](11-ui.mmd) | The raylib UI process: subscriptions, derived UI state, onroad widgets, offroad screens, and audio/feedback processes. |
+
+## How the diagrams connect
+
+The diagrams form a zoom-in hierarchy. 1 is the 10,000-foot view; 4 is the
+complete runtime picture; 5–11 are subsystem deep-dives that each expand one
+cluster of 4.
+
+```
+01 system overview
+   └── 02 process architecture      (expands: "Managed processes" + manager)
+       └── 03 messaging             (expands: how everything talks: msgq, visionipc, params)
+           └── 04 onroad data flow  (expands: the whole onroad runtime; master graph)
+               ├── 05 vision & model pipeline   (expands: camerad / modeld / dmonitoring / logging)
+               ├── 06 controls stack            (expands: selfdrived / controlsd / card / plannerd / radard)
+               │       ├── 07 car abstraction    (expands: card + opendbc car ports, fingerprinting)
+               │       └── 08 safety path         (expands: card→pandad→panda actuation chain)
+               ├── 09 locationd pipeline         (expands: live* state estimators + GNSS)
+               ├── 10 offroad & cloud            (expands: hardwared, athenad, uploader, OTA, teleop)
+               └── 11 UI                         (expands: the ui process)
+```
+
+Cross-references inside the diagrams use "see NN" notes (e.g. the safety
+diagram points back at the controls stack).
+
+## Key concepts needed to read the diagrams
+
+- **Processes.** Everything except the boot scripts is a *process* supervised
+  by the `manager` (see `system/manager/process_config.py` for the source of
+  truth). Python processes, native binaries (`camerad`, `loggerd`, `encoderd`,
+  native `pandad`), and one detached daemon (`manage_athenad`).
+- **cereal messages.** Every arrow labeled with a message name
+  (`carState`, `modelV2`, `livePose`, …) is a pub/sub edge on the msgq bus,
+  defined in `cereal/log.capnp` and registered in `cereal/services.py`.
+- **visionipc.** Camera frames bypass the normal message bus and travel
+  through dedicated zero-copy buffers (`VISION_STREAM_ROAD`, `WIDE_ROAD`,
+  `DRIVER`). Thick arrows (`==>`) in the diagrams indicate frame streams.
+- **params.** Dashed arrows indicate the persistent key-value params store
+  (`common/params.py`), used for slow / startup data such as `CarParams`,
+  `ControlsReady`, and `IsOnroad` — notably the handshake that lets `pandad`
+  switch the panda MCU into the car-specific safety mode.
+- **onroad vs offroad.** `hardwared` publishes `deviceState.started`; the
+  manager uses it to decide which processes run. Ignition comes from the panda
+  (`pandaStates`).
+
+## Rendering
+
+```sh
+# CLI render to SVG/PNG (requires @mermaid-js/mermaid-cli)
+npx -y @mermaid-js/mermaid-cli -i docs/diagrams/04-onroad-data-flow.mmd -o out.svg
+
+# Or paste the file contents into https://mermaid.live
+```
+
+## Maintenance notes
+
+- Process names and run conditions in 02 mirror
+  `system/manager/process_config.py`; message lists in 04–06 mirror the
+  `SubMaster` / `PubMaster` constructors in each daemon's source.
+- The edge labels are the actual cereal service names — grep
+  `cereal/services.py` to check frequencies and queue sizes.
+- If you add a process or a message, update 02 and 04 first; the subsystem
+  diagrams (05–11) are refinements of those two.
+</script>
+
+<script type="text/markdown" data-path="prefect/2026-10-14-architecture-reference.md">
+# Prefect Architecture Reference (2026-10-14)
+
+Diagrams + file references for the systems architecture. Each section is self-contained; use the reference index at the bottom to retrieve details without re-reading the whole doc.
+
+---
+
+## 1. High-Level System Diagram
+
+```mermaid
+flowchart TB
+    subgraph USERS["User Surfaces"]
+        SDK["Python SDK<br/>@flow / @task<br/>src/prefect/flows.py, tasks.py"]
+        CLI["CLI (cyclopts)<br/>src/prefect/cli/"]
+        UI["React UI (ui-v2)<br/>REST only, openapi-fetch"]
+    end
+
+    subgraph EXEC["Execution Plane (client-side)"]
+        FE["Flow Engine<br/>flow_engine.py"]
+        TE["Task Engine<br/>task_engine.py"]
+        W["Workers (work pools)<br/>workers/base.py"]
+        R["Runner (prefect serve)<br/>runner/runner.py"]
+        TW["TaskWorker (deferred tasks)<br/>task_worker.py"]
+        B["Bundles<br/>cloudpickle flow → subprocess<br/>bundles/"]
+    end
+
+    subgraph SERVER["Orchestration Plane — src/prefect/server/"]
+        API["FastAPI app<br/>api/server.py::create_app"]
+        ORCH["Orchestration rules<br/>orchestration/rules.py, core_policy.py"]
+        SVC["Docket perpetual services<br/>scheduler, late-runs, foreman,<br/>cancellation, vacuums"]
+        EVT["Event pipeline<br/>events/ → triggers → actions"]
+        TQ["TaskQueue<br/>server/task_queue.py"]
+    end
+
+    subgraph DATA["Data Plane"]
+        DB[("SQLAlchemy ORM<br/>server/database/orm_models.py<br/>PG + SQLite (lockstep)")]
+        BLK[("Blocks: server-persisted config<br/>blocks/core.py")]
+        RES[("Result storage blocks<br/>results.py ResultStore")]
+    end
+
+    SDK --> FE
+    SDK --> TE
+    CLI --> API
+    UI -->|REST| API
+    API --> ORCH --> DB
+    FE -->|"REST: propose states"| API
+    TE -->|"task_run.* events (WS)"| EVT
+    W -->|"WS worker channel + REST"| API
+    API -->|"scheduled flow runs"| W
+    W --> B --> FE
+    R -->|"poll + subprocess"| API
+    TW -->|subscribe| TQ
+    TQ -->|"scheduled task runs"| TW
+    SVC --> DB
+    EVT --> DB
+    BLK --> DB
+```
+
+**The core architectural split:** flow-run states are *proposed to the server* (rules ACCEPT/REJECT/WAIT/ABORT); task-run states are *advanced locally* by the task engine and only *reported* via `prefect.task_run.*` events, which `TaskRunRecorder` upserts into the DB. See `src/prefect/AGENTS.md:28-29`.
+
+---
+
+## 2. Flow Execution — Lifecycle Sequence
+
+```mermaid
+sequenceDiagram
+    participant U as User code
+    participant F as @flow (flows.py)
+    participant FE as FlowRunEngine (flow_engine.py)
+    participant C as PrefectClient (client/)
+    participant S as Server API (server/api/)
+    participant OR as Orchestration rules (server/orchestration/)
+
+    U->>F: my_flow(args)
+    F->>FE: run_flow (flow_engine.py:2202)
+    Note over FE: dispatch: sync/async × plain/generator<br/>(flow_engine.py:2070-2199)
+    FE->>C: create_flow_run
+    C->>S: POST /flow_runs
+    FE->>S: propose Running → POST /flow_runs/{id}/set_state
+    S->>OR: run rules (CoreFlowPolicy)
+    alt ACCEPT
+        OR-->>FE: validated state
+    else REJECT
+        OR-->>FE: server's state (may raise Pause)
+    else WAIT
+        OR-->>FE: retry after delay_seconds
+    else ABORT
+        OR-->>FE: raise Abort
+    end
+    Note over FE: enter FlowRunContext (context.py:528)<br/>run user fn → tasks/subflows
+    FE->>S: propose terminal state (Completed/Failed/Crashed)
+    S->>OR: rules validate + commit → state event emitted
+```
+
+- State proposal logic: `src/prefect/utilities/engine/__init__.py:514` (sync), `:612` (async).
+- Endpoint: `src/prefect/server/api/flow_runs.py:820`.
+- Rules: `BaseOrchestrationRule` = async context manager per rule, nested via AsyncExitStack around the DB commit — `src/prefect/server/orchestration/rules.py:534`.
+- Policies: `CoreFlowPolicy` / `CoreTaskPolicy` / `MinimalFlowPolicy` (`force=True` still guarded) — `server/orchestration/core_policy.py`.
+- Subprocess entrypoint: `python -m prefect.flow_engine <entrypoint>` reads `PREFECT__FLOW_RUN_ID` (`flow_engine.py:281`).
+- Subflows: synthetic tracking task + `parent_task_run_id` (`flow_engine.py:981`, `:922`).
+
+---
+
+## 3. Task Execution — Local State Advancement
+
+```mermaid
+flowchart TB
+    subgraph CALL["@task call/submit (tasks.py)"]
+        T["Task.__call__ (tasks.py:1198)"]
+        S2["Task.submit (tasks.py:1277)"]
+        D["Task.delay → deferred Scheduled run<br/>tasks.py:1777"]
+    end
+
+    subgraph TRUNNERS["Task Runners (task_runners.py)"]
+        TP["ThreadPoolTaskRunner (:242)<br/>default, in-proc threads"]
+        PP["ProcessPoolTaskRunner (:749)<br/>pickle → subprocess"]
+        PT["PrefectTaskRunner (:1337)<br/>submit to SERVER (deferred)"]
+    end
+
+    subgraph ENG["Task Engine (task_engine.py)"]
+        SE["Sync/AsyncTaskRunEngine (:432/:1044)"]
+        SS["set_state (:556)<br/>advances state LOCALLY<br/>+ emits prefect.task_run.* event"]
+        BR["begin_run (:516)<br/>poll w/ clamped backoff"]
+    end
+
+    subgraph FUT["Futures (futures.py)"]
+        PC["PrefectConcurrentFuture (:201)"]
+        PD["PrefectDistributedFuture (:283)<br/>waits via TaskRunWaiter"]
+    end
+
+    subgraph SERVERSIDE["Server"]
+        EVIN["WS /events/in"]
+        REC["TaskRunRecorder service<br/>upserts TaskRun rows<br/>services/task_run_recorder.py"]
+        TQ["TaskQueue → WS /task_runs/subscriptions/scheduled"]
+        TWK["TaskWorker (task_worker.py)<br/>executes deferred runs"]
+    end
+
+    T --> SE
+    S2 -->|FlowRunContext required| TP & PP
+    D --> PT
+    TP --> PC
+    PT --> PD
+    PP -->|"pickle State (not Future)"| SE
+    SE --> SS --> BR
+    SS -->|"prefect.task_run.* event"| EVIN --> REC
+    PD -.->|observes events| EVIN
+    PT -->|Scheduled run| TQ --> TWK
+```
+
+Key contrasts vs flow engine (from `src/prefect/AGENTS.md`):
+- `Task.create_run` (tasks.py:876) makes the **only** server call (`client.create_task_run`); all later transitions are local.
+- `ProcessPoolTaskRunner` requires picklable data — futures must be resolved to `State` in the parent (`resolve_to_final_result`).
+- `PrefectTaskRunner`/`Task.delay()` = server-side execution; the `TaskWorker` reads deferred parameters from result storage (`task_worker.py:633`).
+
+---
+
+## 4. Remote Execution — Workers, Runner, Bundles
+
+```mermaid
+flowchart TB
+    subgraph SCHED["Scheduling (server)"]
+        DEP["Deployment (models/deployments.py)"]
+        SCHEDS["Scheduler service<br/>services/scheduler.py<br/>(Docket perpetual)"]
+        WQ["WorkQueue / WorkPool<br/>models/workers.py"]
+        FRS["Scheduled FlowRun"]
+    end
+
+    subgraph WDISPATCH["BaseWorker (workers/base.py)"]
+        POLL["_get_scheduled_flow_runs (:1477)<br/>REST + WS worker channel"]
+        PROP["_propose_pending/submitting (:1741/:1790)<br/>Scheduled→Pending→Submitting"]
+        SUB["_submit_run (:1566) → subclass run()"]
+    end
+
+    subgraph LAUNCH["Launch paths"]
+        PW["ProcessWorker (workers/process.py:134)<br/>a) FlowRunExecutorContext direct<br/>b) WorkspaceResolvingEngineCommandStarter<br/>   → pull steps → python -m prefect.engine"]
+        BN["Bundle (bundles/)<br/>create_bundle_for_flow_run<br/>cloudpickle+gzip standalone file<br/>→ python -m prefect.bundles.execute"]
+        OTHER["Cloud/Container workers<br/>(worker subclasses)"]
+    end
+
+    subgraph RUNNER["Runner (runner/runner.py:182) — no work pool"]
+        SP["_state_proposer, _scheduled_run_poller<br/>_process_manager (SIGTERM→SIGKILL)<br/>TCP control channel for cancel"]
+        WEB["tiny webserver /health, /run_count, /shutdown<br/>runner/server.py"]
+    end
+
+    INF["flow run subprocess<br/>python -m prefect.flow_engine<br/>reads PREFECT__FLOW_RUN_ID"]
+
+    DEP --> SCHEDS --> FRS --> WQ --> POLL --> PROP --> SUB
+    SUB --> PW & BN & OTHER
+    PW & BN --> INF
+    RUNNER --> SP --> INF
+    RUNNER --> WEB
+```
+
+- Worker↔server WebSocket: `/work_pools/{name}/workers/connect` (`server/api/workers.py:1088`), protocol schema `client/schemas/worker_channel.py`.
+- Server→worker teardown messaging: pluggable `server/worker_communication/cleanup_queue/` (in-memory default; `PREFECT_SERVER_WORKER_CHANNEL_CLEANUP_QUEUE_STORAGE` for Redis/HA).
+- `infrastructure/` is now only **provisioners** (ECS, Cloud Run, etc.); old Agent/Infrastructure classes were removed in Prefect 3 (`infrastructure/agent.py` = 9-line shim).
+
+---
+
+## 5. Server Internals — Request & Service Flow
+
+```mermaid
+flowchart TB
+    subgraph APP["create_app (server/api/server.py:859)"]
+        LS["Lifespan (:920):<br/>alembic migrations → register block types<br/>→ Docket + background worker → services"]
+        MID["Middleware: CORS, GZip, CSRF,<br/>SQLite request limit, Prometheus"]
+        ROUTERS["~25 routers (API_ROUTERS :102)<br/>flows, flow_runs, task_runs, deployments,<br/>work_pools, events, concurrency_limits_v2,<br/>blocks, artifacts, variables, automations, ui/*"]
+        UIAPP["create_ui_app: V1 at / , V2 at /v2<br/>cookie-based redirect middleware"]
+    end
+
+    subgraph ORCHL["Orchestration (orchestration/)"]
+        CTX["OrchestrationContext (:71)<br/>initial/proposed/validated state<br/>ACCEPT|REJECT|ABORT|WAIT"]
+        RULES["BaseOrchestrationRule (:534)<br/>before/after_transition + cleanup<br/>nested via AsyncExitStack"]
+        CORE["core_policy.py: concurrency slots,<br/>caching, retries, pausing, cancellation,<br/>PreventResultDataLoss"]
+        UT["global_policy.py transforms:<br/>timestamps, run counters, subflow parent updates"]
+    end
+
+    subgraph SVCS["Services — Docket 'find-and-flood'"]
+        BW["In-process Docket worker<br/>api/background_workers.py<br/>runs per-entity tasks, e.g.<br/>mark-flow-run-late:{id}"]
+        PS["perpetual_services.py registry<br/>scheduler · late_runs · foreman<br/>pause_expirations · repossessor<br/>cancellation_cleanup · db_vacuum"]
+    end
+
+    subgraph EVT["Events (server/events/)"]
+        IN["WS /events/in → message bus<br/>(in-memory | PG LISTEN/NOTIFY)"]
+        PIPE["EventsPipeline"]
+        PERS["EventPersister → DB"]
+        TRG["ReactiveTriggers + proactive<br/>triggers.py"]
+        ACT["Actions: run deployment,<br/>pause/resume, cancel, notify"]
+    end
+
+    MODELS["models/ — SQLAlchemy CRUD layer<br/>(also emits prefect.* lifecycle events<br/>via events/schemas/lifecycle.py)"]
+    ORM["database/orm_models.py<br/>Alembic: _migrations/versions/{postgresql,sqlite}/"]
+    DBCFG["database/interface.py PrefectDBInterface<br/>configurations.py: PG / SQLite configs"]
+
+    LS --> MID --> ROUTERS
+    ROUTERS --> CTX --> RULES --> CORE & UT
+    ROUTERS --> MODELS --> ORM
+    PS --> BW --> MODELS
+    IN --> PIPE --> PERS & TRG --> ACT
+    RULES -->|"EnqueueScheduledTasks"| TQ["task_queue.py TaskQueue"]
+    ORM --- DBCFG
+```
+
+Adding an endpoint = the layering order **schema → model → route** (`server/AGENTS.md:15-23`); `variables` is the canonical example.
+
+---
+
+## 6. Client Architecture & Data Interfaces
+
+```mermaid
+flowchart LR
+    subgraph SURF["Surfaces"]
+        SDK["SDK engines"]
+        CLI["CLI"]
+        UIV["ui-v2 (openapi-fetch<br/>+ generated prefect.ts)"]
+    end
+
+    subgraph CLIENT["src/prefect/client/"]
+        GC["get_client (:176)<br/>reuses context clients,<br/>may boot ephemeral server"]
+        PC["PrefectClient (:281)<br/>SyncPrefectClient (:1228)"]
+        SUBS["mixin domain subclients:<br/>_flow_runs, _deployments, _work_pools,<br/>_events, _automations, ..."]
+        WS["subscriptions.py WebSocket client<br/>events/clients.py PrefectEventSubscriber (:693)<br/>logging/clients.py PrefectLogsSubscriber"]
+        CS["client/schemas/ (kept separate<br/>from server/schemas/)"]
+        CC["cloud.py CloudClient (:74)"]
+    end
+
+    subgraph PROTO["Protocols"]
+        REST["REST: set_state, CRUD,<br/>get_scheduled_flow_runs_for_work_pool"]
+        EVWS["WS /events/in + /events/out"]
+        LOGWS["WS logs /out"]
+        WORK["WS work_pool_worker_channel.v1"]
+    end
+
+    SERVER["Prefect server / Prefect Cloud"]
+    EMIT["emit_event (events/utilities.py:30)<br/>→ EventsWorker queue (events/worker.py:70)"]
+    EPHEM["ephemeral SubprocessASGIServer<br/>(no PREFECT_API_URL)"]
+
+    SDK --> GC --> PC --> SUBS
+    CLI --> PC
+    UIV -->|REST| SERVER
+    SDK --> EMIT
+    SUBS --> REST & EVWS & WORK
+    WS --> EVWS & LOGWS
+    PC --> CS
+    PC --> CC --> SERVER
+    GC -.-> EPHEM -.-> SERVER
+```
+
+- **`prefect-client` package build** (repo-root `client/`): `build_client.sh` copies `src/prefect/`, strips `cli/`, `server/` (except `server/api/`), etc. Dep changes must mirror `pyproject.toml` ↔ `client/pyproject.toml`.
+
+---
+
+## 7. Cross-Cutting Concerns
+
+```mermaid
+flowchart TB
+    subgraph CTX["Context DI (context.py)"]
+        FRC["FlowRunContext (:528)<br/>flow, flow_run, task_runner,<br/>result_store, run_results"]
+        TKC["TaskRunContext (:531)<br/>task, task_run, result_store"]
+        SER["serialize_context (:115) → travels<br/>into subprocesses/bundles"]
+    end
+
+    subgraph RESULTS["Results (results.py)"]
+        RS["ResultStore (:437)<br/>write → mark_persisted()"]
+        SERZ["serializers.py dispatch:<br/>pickle/json/orjson/compression"]
+        STOR["Storage blocks (WritableFileSystem)<br/>blocks/ + integrations (S3, GCS, ...)"]
+        TIERS["default storage = 3 tiers:<br/>setting → server block (API) → local path"]
+    end
+
+    subgraph CONC["Concurrency"]
+        V2["v2 lease-based (concurrency/)<br/>acquire → lease → renew thread<br/>→ release; events"]
+        V1["v1 legacy (concurrency/v1/)"]
+        SERVER["server models:<br/>concurrency_limits (v1)<br/>concurrency_limits_v2 + decay"]
+    end
+
+    subgraph CONF["Settings (settings/)"]
+        SET["Settings(PrefectBaseSettings)<br/>models/root.py:94 nested PREFECT_*"]
+        PROF["profiles.toml + sources.py<br/>env filter, dotenv, profiles"]
+    end
+
+    subgraph BLK["Blocks"]
+        COREB["Block (blocks/core.py:316)<br/>register_type_and_schema (:1580)"]
+        INTEG["integrations expose blocks via<br/>prefect.collections entry-points"]
+    end
+
+    CTX --> RS
+    RS --> SERZ --> STOR
+    RS --> TIERS
+    V2 --> SERVER
+    COREB --> SERVER
+    INTEG --> COREB
+    SET --> PROF
+```
+
+---
+
+## 8. Reference Index
+
+| Topic | Where |
+|---|---|
+| Server invariant contracts | `src/prefect/server/AGENTS.md` |
+| SDK invariant contracts (engines, results, suspension) | `src/prefect/AGENTS.md` |
+| Worker/runner/deployment contracts | `src/prefect/workers/AGENTS.md`, `runner/AGENTS.md`, `deployments/AGENTS.md` |
+| State proposal (sync/async) | `src/prefect/utilities/engine/__init__.py:514,612` |
+| set_state endpoint | `src/prefect/server/api/flow_runs.py:820` |
+| Orchestration context/rules/transforms | `server/orchestration/rules.py:71,534,969` |
+| Policy rule set | `server/orchestration/core_policy.py` |
+| Worker polling → dispatch → submit | `workers/base.py:1477,1506,1566,1741,1790` |
+| Perpetual services registry | `server/services/perpetual_services.py`, `server/api/background_workers.py` |
+| TaskRunRecorder (event→DB upsert) | `server/services/task_run_recorder.py` |
+| Event ingestion websockets | `server/api/events.py` |
+| Worker WebSocket channel | `server/api/workers.py:1088`, `client/schemas/worker_channel.py` |
+| Client composition | `client/orchestration/__init__.py:281,1228`, subclients in `client/orchestration/*/client.py` |
+| Event emission / subscriber | `events/utilities.py:30`, `events/clients.py:275,693`, `events/worker.py:70` |
+| ResultStore / default tiers | `results.py:437,163` |
+| Contexts | `context.py:528,531,115` |
+| Settings model / profiles | `settings/models/root.py:94`, `settings/profiles.py:182` |
+| Blocks registration | `blocks/core.py:316,1580` |
+| Concurrency v2 leases | `concurrency/_leases.py`, `concurrency/services.py` |
+| DB interface / migrations | `server/database/interface.py`, `server/database/_migrations/versions/` |
+| UI API layer | `ui-v2/src/api/service.ts`, generated `ui-v2/src/api/prefect.ts` |
+| prefect-client build | `client/build_client.sh`, `client/pyproject.toml` |
+| Deployments (prefect.yaml, steps) | `deployments/base.py`, `deployments/steps/{core,pull,utility}.py`, `deployments/runner.py:167` |
+| Bundles | `bundles/__init__.py`, `bundles/execute.py` |
+| Tests map | `tests/` mirrors src; e2e `integration-tests/`; cloud compat `compat-tests/` (submodule); UI `ui-v2/tests/`, `ui-v2/e2e/` |
+
+## 9. Rules of Thumb (from AGENTS.md contracts)
+
+1. **Flow states → server; task states → local + events.** Never bypass server orchestration for flow runs.
+2. **Sync/async engine paths must stay in lockstep** — mirror every behavior change.
+3. **SQLite and PostgreSQL migrations must stay in lockstep** — CI tests both.
+4. **`force=True` routes through `MinimalFlowPolicy`** — not a true bypass (still `PreventResultDataLoss`).
+5. **Perpetual services use `Perpetual(automatic=True)`** and Docket keys `"<service>:<entity-id>"` to prevent duplicate enqueues.
+6. **Every result write must call `mark_persisted()`** or state metadata is silently dropped.
+7. **Server vs client schemas stay separate** (`server/schemas/` vs `client/schemas/`).
+8. **Auth token comparisons use `hmac.compare_digest`** (CSRF, basic auth, WS auth).
+</script>
+
+<script>
+const PROJECTS = {
+  "vLLM": [
+    "1 - Systems Overview.svg",
+    "2 - Process Topology[1.Process Tree].svg",
+    "2 - Process Topology[2. ZMQ Wiring]",
+    "3 - Request Lifecycle.svg",
+    "4 - Frontend Serving[1. Server Assembly].svg",
+    "4 - Frontend Serving[2. Request Handling Inside One Endpoint, chat].svg",
+    "5 - Engine Core[1. Busy Loop].svg",
+    "5 - Engine Core[2. Frontend Counterpart].svg",
+    "5 - Engine Core[3. Startup Seq].svg",
+    "6 - Scheduler & KV Cache[1. Scheduling Loop].svg",
+    "6 - Scheduler & KV Cache[2. KV Cache Manager Hierarchy].svg",
+    "6 - Scheduler & KV Cache[3. Prefix Caching, Merkle chained].svg",
+    "7 - Execution Stack[1. Executor and Worker Selection].svg",
+    "7 - Execution Stack[2. Inside Execute Model]",
+    "7 - Execution Stack[3. CUDA graph & torch.compile]",
+    "8 - Attention Distributed[1. Model resolution & loading]",
+    "8 - Attention Distributed[2. Attention Backend Selection].svg",
+    "8 - Attention Distributed[3. Parallelism, tp,pp,dp,ep]",
+    "8 - Attention Distributed[4. KV Transfer].svg",
+    "9 - Sampling Spec Decode[1. Sampling Path].svg",
+    "9 - Sampling Spec Decode[2. Scheduler <-> Drafter]",
+    "9 - Sampling Spec Decode[3. Structured Output].svg",
+    "9 - Sampling Spec Decode[4. LoRA].svg",
+    "10 - Config Platform Plugin[1. Config Assembly Pipeline].svg",
+    "10 - Config Platform Plugin[2. Platform Layer].svg",
+    "10 - Config Platform Plugin[3. Plugin System]",
+    "10 - Config Platform Plugin[4. Observability].svg",
+  ],
+  "Openpilot": [
+    "1 - System Overview.svg",
+    "2 - Process Architecture.svg",
+    "3 - Messaging.svg",
+    "4 - Onroad Data Flow.svg",
+    "5 - Vision Model Pipeline.svg",
+    "6 - Controls Stack.svg",
+    "7 - Car Abstraction.svg",
+    "8 - Safety Path.svg",
+    "9 - Locationd Pipeline.svg",
+    "10 - Offroad Cloud.svg",
+    "11 - ui.svg",
+  ],
+  "prefect": [
+    "High Level System Diagram.svg",
+    "Client Architecture and Data Interface.svg",
+    "Flow Execution - Lifecycle Sequence.svg",
+    "Task Execution - Local State Advancement.svg",
+    "Remote Execution - Worker, Runner, Bundle.svg",
+    "Server Internals - Request & Service Flow.svg",
+    "Cross Cutting Concerns.svg",
+  ],
+  "TinyGrad": [
+    "TinyGrad Architecture.svg",
+  ],
+};
+
+const DOCS = {
+  "vLLM": ["README.md"],
+  "Openpilot": ["README.md"],
+  "prefect": ["2026-10-14-architecture-reference.md"],
+};
+
+const listEl   = document.getElementById('list');
+const emptyEl  = document.getElementById('empty');
+const searchEl = document.getElementById('search');
+const imgEl    = document.getElementById('view');
+const docEl    = document.getElementById('doc');
+const stageEl  = document.getElementById('stage');
+const phEl     = document.getElementById('placeholder');
+const titleEl  = document.getElementById('title');
+const zoomLbl  = document.getElementById('zoom-label');
+
+// embedded markdown sources
+const MD = {};
+document.querySelectorAll('script[type="text/markdown"]').forEach(
+  s => MD[s.dataset.path] = s.textContent.trim()
+);
+
+// flat index of all entries (readme first, then diagrams, per project)
+const all = [];
+for (const proj of Object.keys(PROJECTS)) {
+  for (const f of (DOCS[proj] || []))
+    all.push({ proj, file: f, path: proj + '/' + f, type: 'doc' });
+  for (const f of PROJECTS[proj])
+    all.push({ proj, file: f, path: proj + '/' + f, type: 'svg' });
+}
+
+let active = -1;
+let scale = 1, tx = 0, ty = 0;
+let fitScale = 1;
+const MIN = 0.05, MAX = 8;
+
+const CHEV_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M14.25 4.75 8 11 1.75 4.75" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>';
+const DOC_ICON = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3.5 1.5h6l3 3v10h-9z" stroke="currentColor" stroke-width="1.3"/><path d="M9.5 1.5v3h3" stroke="currentColor" stroke-width="1.3"/></svg>';
+
+/* ---------- build sidebar ---------- */
+function buildList(filter = '') {
+  listEl.innerHTML = '';
+  emptyEl.style.display = 'none';
+  const q = filter.trim().toLowerCase();
+  let shown = 0;
+
+  for (const proj of Object.keys(PROJECTS)) {
+    const docs  = (DOCS[proj] || []).filter(f => !q || f.toLowerCase().includes(q) || proj.toLowerCase().includes(q));
+    const files = PROJECTS[proj].filter(f => !q || f.toLowerCase().includes(q) || proj.toLowerCase().includes(q));
+    if (!docs.length && !files.length) continue;
+
+    const group = document.createElement('div');
+    group.className = 'group';
+
+    const head = document.createElement('div');
+    head.className = 'group-header';
+    head.innerHTML = `<span class="chev">▼</span>${proj}<span class="count">${docs.length + files.length}</span>`;
+    head.onclick = () => group.classList.toggle('collapsed');
+    group.appendChild(head);
+
+    const items = document.createElement('div');
+    items.className = 'items';
+    const entries = [
+      ...docs.map(f => ({ f, doc: true })),
+      ...files.map(f => ({ f, doc: false })),
+    ];
+    for (const { f, doc } of entries) {
+      const idx = all.findIndex(d => d.proj === proj && d.file === f);
+      const el = document.createElement('div');
+      el.className = 'item' + (doc ? ' doc' : '') + (idx === active ? ' active' : '');
+      el.innerHTML = (doc ? DOC_ICON : CHEV_ICON) + `<span>${esc(f)}</span>`;
+      el.onclick = () => load(idx);
+      items.appendChild(el);
+      shown++;
+    }
+    group.appendChild(items);
+    listEl.appendChild(group);
+  }
+  if (!shown) emptyEl.style.display = 'block';
+}
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+/* ---------- markdown renderer ---------- */
+function mdRender(src) {
+  const inline = t => {
+    const codes = [];
+    t = t.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+    t = esc(t);
+    t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    t = t.replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    t = t.replace(/\u0000(\d+)\u0000/g, (m, i) => '<code>' + esc(codes[+i]) + '</code>');
+    return t;
+  };
+  const lines = src.replace(/\r\n?/g, '\n').split('\n');
+  let html = '', i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (!line.trim()) { i++; continue; }
+
+    // fenced code
+    if (/^```/.test(line)) {
+      const lang = line.slice(3).trim();
+      i++;
+      const buf = [];
+      while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++;
+      html += `<pre data-lang="${esc(lang)}"><code>${esc(buf.join('\n'))}</code></pre>`;
+      continue;
+    }
+
+    // heading
+    let m = line.match(/^(#{1,6})\s+(.*)$/);
+    if (m) {
+      const l = m[1].length;
+      html += `<h${l}>${inline(m[2].trim())}</h${l}>`;
+      i++; continue;
+    }
+
+    // horizontal rule
+    if (/^\s*(---+|\*\*\*+)\s*$/.test(line)) { html += '<hr>'; i++; continue; }
+
+    // blockquote
+    if (/^>\s?/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ''));
+      html += '<blockquote>' + mdRender(buf.join('\n')) + '</blockquote>';
+      continue;
+    }
+
+    // table
+    if (/^\s*\|/.test(line) && i + 1 < lines.length &&
+        /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes('-')) {
+      const row = l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+      const head = row(line);
+      const aligns = row(lines[i + 1]).map(c =>
+        /^:-+:$/.test(c) ? 'center' : /-+:$/.test(c) ? 'right' : 'left');
+      i += 2;
+      let body = '';
+      while (i < lines.length && /^\s*\|/.test(lines[i])) body += '<tr>' +
+        row(lines[i++]).map((c, j) => `<td style="text-align:${aligns[j] || 'left'}">${inline(c)}</td>`).join('') + '</tr>';
+      html += '<div class="tbl"><table><thead><tr>' +
+        head.map((c, j) => `<th style="text-align:${aligns[j] || 'left'}">${inline(c)}</th>`).join('') +
+        '</tr></thead><tbody>' + body + '</tbody></table></div>';
+      continue;
+    }
+
+    // list
+    m = line.match(/^\s*[-*]\s+(.*)$/);
+    const mo = line.match(/^\s*\d+\.\s+(.*)$/);
+    if (m || mo) {
+      const ordered = !!mo;
+      const buf = [];
+      while (i < lines.length) {
+        const mm = lines[i].match(ordered ? /^\s*\d+\.\s+(.*)$/ : /^\s*[-*]\s+(.*)$/);
+        if (!mm) break;
+        buf.push(mm[1]); i++;
+      }
+      html += `<${ordered ? 'ol' : 'ul'}>` + buf.map(x => `<li>${inline(x)}</li>`).join('') + `</${ordered ? 'ol' : 'ul'}>`;
+      continue;
+    }
+
+    // paragraph
+    const buf = [line.trim()];
+    i++;
+    while (i < lines.length && lines[i].trim() &&
+           !/^(#{1,6}\s|```|>|-\s|\*\s|\d+\.\s|\s*\|)/.test(lines[i])) {
+      buf.push(lines[i].trim()); i++;
+    }
+    html += '<p>' + buf.map(inline).join(' ') + '</p>';
+  }
+  return html;
+}
+
+/* ---------- viewer ---------- */
+function isDocActive() { return active >= 0 && all[active].type === 'doc'; }
+
+function load(i) {
+  if (i < 0 || i >= all.length) return;
+  active = i;
+  const d = all[i];
+  titleEl.innerHTML = `${esc(d.file)} <span>· ${esc(d.proj)}</span>`;
+  phEl.style.display = 'none';
+  buildList(searchEl.value);
+
+  if (d.type === 'doc') {
+    imgEl.style.display = 'none';
+    docEl.innerHTML = '<div class="inner">' + mdRender(MD[d.path] || `*Not found: ${esc(d.path)}*`) + '</div>';
+    docEl.style.display = 'block';
+    docEl.scrollTop = 0;
+    document.getElementById('zoom-in').disabled = true;
+    document.getElementById('zoom-out').disabled = true;
+    document.getElementById('fit').disabled = true;
+  } else {
+    docEl.style.display = 'none';
+    imgEl.src = encodeURI(d.path);
+    imgEl.style.display = 'block';
+    document.getElementById('zoom-in').disabled = false;
+    document.getElementById('zoom-out').disabled = false;
+    document.getElementById('fit').disabled = false;
+    scale = 1; tx = 0; ty = 0;
+    imgEl.onload = () => requestAnimationFrame(fit);
+    if (imgEl.complete && imgEl.naturalWidth) fit();
+  }
+}
+
+function fit() {
+  if (isDocActive() || !imgEl.naturalWidth) return;
+  const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
+  fitScale = Math.min(stageEl.clientWidth / iw, stageEl.clientHeight / ih) * 0.95;
+  scale = fitScale; tx = 0; ty = 0;
+  apply();
+}
+
+function apply() {
+  imgEl.style.transform =
+    `translate(-50%, -50%) translate(${tx}px, ${ty}px) scale(${scale})`;
+  zoomLbl.textContent = Math.round(scale * 100) + '%';
+}
+
+function zoomBy(f, cx, cy) {
+  if (isDocActive()) return;
+  const ns = Math.min(MAX, Math.max(MIN, scale * f));
+  if (cx !== undefined) {
+    // keep the point under the cursor stationary
+    const rx = cx - stageEl.clientWidth / 2;
+    const ry = cy - stageEl.clientHeight / 2;
+    tx = rx - (rx - tx) * (ns / scale);
+    ty = ry - (ry - ty) * (ns / scale);
+  }
+  scale = ns;
+  apply();
+}
+
+/* ---------- events ---------- */
+document.getElementById('zoom-in').onclick  = () => zoomBy(1.25);
+document.getElementById('zoom-out').onclick = () => zoomBy(0.8);
+document.getElementById('fit').onclick = fit;
+document.getElementById('prev').onclick = () => load(prevIdx());
+document.getElementById('next').onclick = () => load(nextIdx());
+document.getElementById('open').onclick = () => {
+  if (active >= 0) window.open(encodeURI(all[active].path), '_blank');
+};
+document.getElementById('sb-toggle').onclick = toggleSidebar;
+
+function toggleSidebar() {
+  if (document.activeElement === searchEl) searchEl.blur();
+  document.body.classList.toggle('sb-collapsed');
+  // stage geometry changed -> refit after the transition settles
+  clearTimeout(rt);
+  rt = setTimeout(() => { if (active >= 0) fit(); }, 230);
+}
+
+document.getElementById('full').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen();
+};
+
+stageEl.addEventListener('wheel', e => {
+  if (isDocActive()) return; // let the readme scroll natively
+  e.preventDefault();
+  zoomBy(e.deltaY < 0 ? 1.15 : 0.87, e.clientX - stageEl.getBoundingClientRect().left,
+                                         e.clientY - stageEl.getBoundingClientRect().top);
+}, { passive: false });
+
+let dragging = false, sx = 0, sy = 0;
+stageEl.addEventListener('mousedown', e => {
+  if (isDocActive()) return; // allow text selection in readmes
+  dragging = true; sx = e.clientX - tx; sy = e.clientY - ty;
+  stageEl.classList.add('panning');
+});
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  tx = e.clientX - sx; ty = e.clientY - sy; apply();
+});
+window.addEventListener('mouseup', () => {
+  dragging = false; stageEl.classList.remove('panning');
+});
+
+function prevIdx() { return active > 0 ? active - 1 : all.length - 1; }
+function nextIdx() { return active < all.length - 1 ? active + 1 : 0; }
+
+window.addEventListener('keydown', e => {
+  if (e.target === searchEl) {
+    if (e.key === 'Escape') { searchEl.blur(); }
+    return;
+  }
+  switch (e.key) {
+    case '/': e.preventDefault(); searchEl.focus(); searchEl.select(); break;
+    case 'ArrowLeft':  load(prevIdx()); break;
+    case 'ArrowRight': load(nextIdx()); break;
+    case '+': case '=': zoomBy(1.25); break;
+    case '-': zoomBy(0.8); break;
+    case '0': fit(); break;
+    case 's': case 'S': toggleSidebar(); break;
+    case 'f': case 'F':
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen();
+      break;
+  }
+});
+
+let rt;
+window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (active >= 0) fit(); }, 150); });
+
+searchEl.addEventListener('input', () => buildList(searchEl.value));
+
+buildList();
+</script>
+</body>
+</html>
